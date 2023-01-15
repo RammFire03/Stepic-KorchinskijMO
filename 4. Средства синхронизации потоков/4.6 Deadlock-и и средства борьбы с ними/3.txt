@@ -1,0 +1,85 @@
+«адание:
+“€желое задание этой недели. –еализовать Wait/Die блокировки, которые позвол€ют избежать deadlock-ов.
+–ешать это задание можно только на €зыке C. ¬ам будут доступны блокировки (struct lock), переменные состо€ни€ (struct condition) и атомарные Read/Modify/Write регистры (atomic_int, atomic_uint, atomic_short, atomic_ushort, atomic_long, atomic_ulong, atomic_llong, atomic_ullong) с интерфейсом, который использовалс€ в видео.
+ѕровер€юща€ система будет оценивать вашу реализацию на р€де простых однопоточных тестов:
+	* если только один поток пытаетс€ захватить блокировку, то захват должен быть успешным
+	* попытка захвата одной блокировки несколько раз из одного потока не должна приводить к deadlock-у
+ роме простых однопоточных тестов, естественно, будет и многопоточный: несколько потоков будут пытатьс€ захватить блокировки в таком пор€дке, который с большой веро€тностью приведет к deadlock-у. ≈сли ваше решение не укладываетс€ в лимит времени, значит в вашем коде скорее всего случилс€ deadlock.
+“ребуемый интерфейс реализации описан в шаблоне кода.
+
+
+–ешение:
+struct lock;
+void lock_init(struct lock *lock);
+void lock(struct lock *lock);
+void unlock(struct lock *lock);
+
+struct condition;
+void condition_init(struct condition *cv);
+void wait(struct condition *cv, struct lock *lock);
+void notify_one(struct condition *cv);
+void notify_all(struct condition *cv);
+
+struct wdlock_ctx;
+
+struct wdlock {
+    struct wdlock *next;
+
+    struct lock lock;
+    struct condition cv;
+};
+
+struct wdlock_ctx {
+    unsigned long long timestamp;
+    struct wdlock *locks;
+};
+void wdlock_ctx_init(struct wdlock_ctx *ctx)
+{
+    static atomic_ullong next;
+
+    ctx->timestamp = atomic_fetch_add(&next, 1) + 1;
+    ctx->locks = NULL;
+}
+void wdlock_init(struct wdlock *lock)
+{
+    lock_init(&lock->lock);
+    condition_init(&lock->cv);
+    lock->owner = NULL;
+}
+int wdlock_lock(struct wdlock *l, struct wdlock_ctx *ctx)
+{
+    // ¬аш код здесь
+    lock(&l->lock);
+
+    while (l->owner != NULL) {
+        if (l->owner->timestamp <= ctx->timestamp) {
+            unlock(&l->lock);
+            return 0;
+        }
+
+        wait(&l->cv, &l->lock);
+    }
+
+    l->owner = ctx;
+    l->next = ctx->locks;
+    ctx->locks = l;
+    unlock(&l->lock);
+
+    return 1;
+}
+
+
+void wdlock_unlock(struct wdlock_ctx *ctx)
+{
+    // ¬аш код здесь
+    while (ctx->locks != NULL) {
+        struct wdlock *tmp = ctx->locks;
+
+        lock(&tmp->lock);
+        tmp->owner = NULL;
+        ctx->locks = tmp->next;
+        tmp->next = NULL;
+        notify_all(&tmp->cv);
+        unlock(&tmp->lock);
+    }
+}

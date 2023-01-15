@@ -1,0 +1,91 @@
+Задание:
+В этом задании вам потребуется реализовать планировщик, использующий алгоритм Round Robin. Реализация планировщика состоит из нескольких функций:
+	* void scheduler_setup(int timeslice) - вызывается перед началом работы, а timeslice - квант времени, который нужно использовать в некоторых единицах времени (что именно используется как единица времени, не существенно);
+	* void new_thread(int thread_id) - оповещает планировщик о новом потоке с идентификатором thread_id;
+	* void exit_thread() - оповещает планировщик о том, что текущий исполняемый на CPU поток завершился (соответственно, планировщик должен отдать CPU кому-то другому);
+	* void block_thread() - оповещает планировщик, что текущий исполняемый поток был заблокирован (например, запросил IO операцию и должен отдать CPU);
+	* void wake_thread(int thread_id) - оповещает, что поток с идентификатором thread_id был разблокирован (например, IO операция завершилась);
+	* void timer_tick() - вызывается через равные интервалы времени, нотифицирует, что прошла одна единица времени;
+	* int current_thread(void) - функция должна возвращать идентификатор потока, который сейчас должен выполняться на CPU, если такого потока нет, то нужно вернуть -1.
+При выполнении задания каждый раз, когда поток выполняется на CPU и вызывается timer_tick, считайте, что поток отработал целую единицу времени на CPU. Т. е. даже если предыдущий поток добровольно освободил CPU (вызвав block_thread или exit_thread) и сразу после того, как CPU был отдан другому потоку, была вызвана функция timer_tick, то все равно считается, что второй поток отработал целую единицу времени на CPU.
+
+
+Решение:
+#include <queue>
+
+static std::queue<int> *_threads_queue;
+static int _timeslice;
+static int _ticked;
+static int _current_thread_id;
+
+void switch_to_next_thread()
+{
+    _ticked = 0;
+
+    if (_threads_queue->size())
+    {
+        _current_thread_id = _threads_queue->front();
+        _threads_queue->pop();
+    }
+    else
+    {
+        _current_thread_id = -1;
+    }
+}
+void scheduler_setup(int timeslice)
+{
+    _threads_queue = new std::queue<int>();
+    _timeslice = timeslice;
+    _ticked = 0;
+    _current_thread_id = -1;
+}
+
+void new_thread(int thread_id)
+{
+    if (_current_thread_id == -1)
+    {
+        _current_thread_id = thread_id;
+    }
+    else
+    {
+        _threads_queue->push(thread_id);
+    }
+}
+void exit_thread()
+{
+    switch_to_next_thread();
+}
+
+void block_thread()
+{
+    switch_to_next_thread();
+}
+void wake_thread(int thread_id)
+{
+    if (_current_thread_id == -1)
+    {
+        _current_thread_id = thread_id;
+    }
+    else
+    {
+        _threads_queue->push(thread_id);
+    }
+}
+void timer_tick()
+{
+    if (_current_thread_id == -1)
+    {
+        return;
+    }
+
+    if (++_ticked == _timeslice)
+    {
+        _threads_queue->push(_current_thread_id);
+        switch_to_next_thread();
+    }
+}
+
+int current_thread()
+{
+    return _current_thread_id;
+}
